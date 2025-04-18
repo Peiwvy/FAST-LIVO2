@@ -349,6 +349,8 @@ double VIOManager::calculateNCC(float *ref_patch, float *cur_patch, int patch_si
   return numerator / sqrt(demoniator1 * demoniator2 + 1e-10);
 }
 
+// 从已建立的视觉稀疏地图中检索与当前图像相关的特征点
+// plane_map：视觉特征地图，存储了之前观测到的特征点
 void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
 {
   if (feat_map.size() <= 0) return;
@@ -383,6 +385,7 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
   // printf("pg size: %zu \n", pg.size());
 
+  // 遍历点云 投影到图像平面
   for (int i = 0; i < pg.size(); i++)
   {
     // double t0 = omp_get_wtime();
@@ -436,7 +439,7 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
   // double t1 = omp_get_wtime();
   vector<VOXEL_LOCATION> DeleteKeyList;
-
+  // 遍历特征地图中的每个体素，找出在当前视角下可见的特征点
   for (auto &iter : sub_feat_map)
   {
     VOXEL_LOCATION position = iter.first;
@@ -451,6 +454,7 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
       std::vector<VisualPoint *> &voxel_points = corre_voxel->second->voxel_points;
       int voxel_num = voxel_points.size();
 
+      // 计算特征点的投影误差，并将误差小于阈值的特征点添加到视觉子地图中
       for (int i = 0; i < voxel_num; i++)
       {
         VisualPoint *pt = voxel_points[i];
@@ -781,12 +785,14 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
   printf("[ VIO ] Retrieve %d points from visual sparse map\n", total_points);
 }
 
+// 计算 Jacobian 矩阵并更新 EKF
 void VIOManager::computeJacobianAndUpdateEKF(cv::Mat img)
 {
   if (total_points == 0) return;
   
   compute_jacobian_time = update_ekf_time = 0.0;
 
+  // 从金字塔顶层开始，逐层进行优化
   for (int level = patch_pyrimid_level - 1; level >= 0; level--)
   {
     if (inverse_composition_en)
@@ -797,10 +803,12 @@ void VIOManager::computeJacobianAndUpdateEKF(cv::Mat img)
     else
       updateState(img, level);
   }
+  // 更新协方差
   state->cov -= G * state->cov;
   updateFrameState(*state);
 }
 
+// 从点云数据中生成新的视觉地图点。这个函数实现了视觉地图的动态扩展，使系统能够适应环境变化和相机运动
 void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
 {
   if (pg.size() <= 10) return;
@@ -842,6 +850,7 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
 
       if (grid_num[index] != TYPE_MAP)
       {
+        // Shi-Tomasi角点检测算法评估特征点的质量
         float cur_value = vk::shiTomasiScore(img, pc[0], pc[1]);
         if (cur_value > scan_value[index])
         {
@@ -1522,8 +1531,8 @@ void VIOManager::updateState(cv::Mat img, int level)
   if (total_points == 0) return;
   StatesGroup old_state = (*state);
 
-  VectorXd z;
-  MatrixXd H_sub;
+  VectorXd z;     // 观测向量
+  MatrixXd H_sub; // Jacobian 矩阵
   bool EKF_end = false;
   float last_error = std::numeric_limits<float>::max();
 
@@ -1693,7 +1702,7 @@ void VIOManager::updateFrameState(StatesGroup state)
   V3D Pwi(state.pos_end);
   Rcw = Rci * Rwi.transpose();
   Pcw = -Rci * Rwi.transpose() * Pwi + Pci;
-  new_frame_->T_f_w_ = SE3(Rcw, Pcw);
+  new_frame_->T_f_w_ = SE3(Rcw, Pcw); // final state of the frame
 }
 
 void VIOManager::plotTrackedPoints()
@@ -1783,6 +1792,8 @@ void VIOManager::dumpDataForColmap()
   cnt++;
 }
 
+// important
+// pg input? output?
 void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &feat_map, double img_time)
 {
   if (width != img.cols || height != img.rows)
