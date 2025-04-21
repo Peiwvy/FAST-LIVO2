@@ -335,6 +335,7 @@ VoxelOctoTree *VoxelOctoTree::Insert(const pointWithVar &pv)
   return nullptr;
 }
 
+// estimate the state of the voxel map
 void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
 {
   cross_mat_list_.clear();
@@ -346,6 +347,7 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
   // ekf_time = 0.0;
   // double t0 = omp_get_wtime();
 
+  // lidar points in body frmae after downsampled
   for (size_t i = 0; i < feats_down_body_->size(); i++)
   {
     V3D point_this(feats_down_body_->points[i].x, feats_down_body_->points[i].y, feats_down_body_->points[i].z);
@@ -392,6 +394,7 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
 
     // double t1 = omp_get_wtime();
 
+    // sinlge deputy 
     BuildResidualListOMP(pv_list_, ptpl_list_);
 
     // build_residual_time += omp_get_wtime() - t1;

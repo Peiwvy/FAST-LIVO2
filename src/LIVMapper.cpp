@@ -127,8 +127,9 @@ void LIVMapper::initializeComponents()
   vio_manager->outlier_threshold = outlier_threshold;
   vio_manager->setImuToLidarExtrinsic(extT, extR);
   vio_manager->setLidarToCameraExtrinsic(cameraextrinR, cameraextrinT);
+  // important：update variable without input, ptr； 指针共享变量
   vio_manager->state = &_state;
-  vio_manager->state_propagat = &state_propagat;
+  vio_manager->state_propagat = &state_propagat; // use shared ptr to replace raw ptr,used to regisration
   vio_manager->max_iterations = max_iterations;
   vio_manager->img_point_cov = IMG_POINT_COV;
   vio_manager->normal_en = normal_en;
@@ -243,6 +244,7 @@ void LIVMapper::processImu()
 {
   // double t0 = omp_get_wtime();
 
+  // IMU process: distort
   p_imu->Process2(LidarMeasures, _state, feats_undistort);
 
   if (gravity_align_en) gravityAlignment();
@@ -296,6 +298,7 @@ void LIVMapper::handleVIO()
     vio_manager->plot_flag = false;
   }
 
+  // Only VIO process； shard_ptr to replace voxelmap_manager->voxel_map_; voxelmap_manager only as reference ...
   vio_manager->processFrame(LidarMeasures.measures.back().img, _pv_list, voxelmap_manager->voxel_map_, LidarMeasures.last_lio_update_time - _first_lidar_time);
 
   if (imu_prop_enable) 
@@ -347,6 +350,7 @@ void LIVMapper::handleLIO()
   
   double t_down = omp_get_wtime();
 
+  // voxelmap process
   feats_down_size = feats_down_body->points.size();
   voxelmap_manager->feats_down_body_ = feats_down_body;
   transformLidar(_state.rot_end, _state.pos_end, feats_down_body, feats_down_world);
@@ -356,12 +360,15 @@ void LIVMapper::handleLIO()
   if (!lidar_map_inited) 
   {
     lidar_map_inited = true;
+    // first time to build voxel map
     voxelmap_manager->BuildVoxelMap();
   }
 
   double t1 = omp_get_wtime();
 
+  // state_propagat means predict state?
   voxelmap_manager->StateEstimation(state_propagat);
+  // structruce bind to output
   _state = voxelmap_manager->state_;
   _pv_list = voxelmap_manager->pv_list_;
 
@@ -406,6 +413,7 @@ void LIVMapper::handleLIO()
 
   PointCloudXYZI::Ptr world_lidar(new PointCloudXYZI());
   transformLidar(_state.rot_end, _state.pos_end, feats_down_body, world_lidar);
+  // update voxelmap
   for (size_t i = 0; i < world_lidar->points.size(); i++) 
   {
     voxelmap_manager->pv_list_[i].point_w << world_lidar->points[i].x, world_lidar->points[i].y, world_lidar->points[i].z;
@@ -415,6 +423,7 @@ void LIVMapper::handleLIO()
           (-point_crossmat) * _state.cov.block<3, 3>(0, 0) * (-point_crossmat).transpose() + _state.cov.block<3, 3>(3, 3);
     voxelmap_manager->pv_list_[i].var = var;
   }
+  // pv_list_ ； point with cov 更新
   voxelmap_manager->UpdateVoxelMap(voxelmap_manager->pv_list_);
   std::cout << "[ LIO ] Update Voxel Map" << std::endl;
   _pv_list = voxelmap_manager->pv_list_;
@@ -1128,6 +1137,7 @@ void LIVMapper::publish_frame_world(const ros::Publisher &pubLaserCloudFullRes, 
       laserCloudWorldRGB->reserve(size);
       // double inv_expo = _state.inv_expo_time;
       cv::Mat img_rgb = vio_manager->img_rgb;
+      // 遍历每个点云 添加颜色信息
       for (size_t i = 0; i < size; i++)
       {
         PointTypeRGB pointRGB;
@@ -1141,6 +1151,7 @@ void LIVMapper::publish_frame_world(const ros::Publisher &pubLaserCloudFullRes, 
 
         if (vio_manager->new_frame_->cam_->isInFrame(pc.cast<int>(), 3)) // 100
         {
+          // 找到对应像素的 RGB 进行投影
           V3F pixel = vio_manager->getInterpolatedPixel(img_rgb, pc);
           pointRGB.r = pixel[2];
           pointRGB.g = pixel[1];

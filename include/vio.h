@@ -108,7 +108,7 @@ public:
 
   double img_point_cov, outlier_threshold, ncc_thre;
   
-  SubSparseMap *visual_submap;
+  SubSparseMap *visual_submap; // Most important data structure 视觉稀疏地图
   std::vector<std::vector<V3D>> rays_with_sample_points;
 
   double compute_jacobian_time, update_ekf_time;
@@ -128,7 +128,7 @@ public:
   unordered_map<int, Warp *> warp_map;
   vector<VisualPoint *> retrieve_voxel_points;
   vector<pointWithVar> append_voxel_points;
-  FramePtr new_frame_;
+  FramePtr new_frame_; // output
   cv::Mat img_cp, img_rgb, img_test;
 
   enum CellType
